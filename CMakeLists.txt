@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2016-2022 The ZLMediaKit project authors. All Rights Reserved.
+# Copyright (c) 2016-present The ZLMediaKit project authors. All Rights Reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,7 +21,7 @@
 # SOFTWARE.
 #
 
-cmake_minimum_required(VERSION 3.1.3)
+cmake_minimum_required(VERSION 3.1.3...3.26)
 
 # 加载自定义模块
 # Load custom modules
@@ -32,6 +32,8 @@ project(ZLMediaKit LANGUAGES C CXX)
 # 使能 C++11
 # Enable C++11
 set(CMAKE_CXX_STANDARD 11)
+# -fPIC
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(ENABLE_API "Enable C API SDK" ON)
 option(ENABLE_API_STATIC_LIB "Enable mk_api static lib" OFF)
@@ -56,10 +58,13 @@ option(ENABLE_TESTS "Enable Tests" ON)
 option(ENABLE_SCTP "Enable SCTP" ON)
 option(ENABLE_WEBRTC "Enable WebRTC" ON)
 option(ENABLE_X264 "Enable x264" OFF)
-option(ENABLE_WEPOLL "Enable wepoll" ON)
 option(ENABLE_VIDEOSTACK "Enable video stack" OFF)
 option(DISABLE_REPORT "Disable report to report.zlmediakit.com" OFF)
 option(USE_SOLUTION_FOLDERS "Enable solution dir supported" ON)
+option(ENABLE_OBJCOPY "Enable use objcopy to generate debug info file" ON)
+# 编译静态库
+option(BUILD_SHARED_LIBS "Build shared instead of static" OFF)
+
 ##############################################################################
 # 设置socket默认缓冲区大小为256k.如果设置为0则不设置socket的默认缓冲区大小,使用系统内核默认值(设置为0仅对linux有效)
 # Set the default buffer size of the socket to 256k. If set to 0, the default buffer size of the socket will not be set,
@@ -193,12 +198,15 @@ if(UNIX)
     "-fPIC"
     "-Wall;-Wextra"
     "-Wno-unused-function;-Wno-unused-parameter;-Wno-unused-variable;-Wno-deprecated-declarations"
-    "-Wno-error=extra;-Wno-error=missing-field-initializers;-Wno-error=type-limits")
+    "-Wno-error=extra;-Wno-error=missing-field-initializers;-Wno-error=type-limits;-Wno-comment")
 
   if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     set(COMPILE_OPTIONS_DEFAULT ${COMPILE_OPTIONS_DEFAULT} "-g3")
   else()
-    set(COMPILE_OPTIONS_DEFAULT ${COMPILE_OPTIONS_DEFAULT} "-g0")
+    find_program(OBJCOPY_FOUND objcopy)
+    if (OBJCOPY_FOUND AND ENABLE_OBJCOPY)
+      set(COMPILE_OPTIONS_DEFAULT ${COMPILE_OPTIONS_DEFAULT} "-g3")
+    endif()
   endif()
 elseif(WIN32)
   if (MSVC)
@@ -208,8 +216,8 @@ elseif(WIN32)
             # warning C4530: C++ exception handler used, but unwind semantics are not enabled.
             "/EHsc")
     # disable Windows logo
-    list(APPEND COMPILE_OPTIONS_DEFAULT "/nologo")
-    list(APPEND CMAKE_STATIC_LINKER_FLAGS "/nologo")
+   string(REPLACE "/nologo" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+   set(CMAKE_STATIC_LINKER_FLAGS "")
   endif()
 endif()
 
@@ -463,6 +471,21 @@ if(ENABLE_VIDEOSTACK)
   endif ()
 endif ()
 
+if(ENABLE_SRT)
+  update_cached_list(MK_COMPILE_DEFINITIONS ENABLE_SRT)
+endif()
+
+if(ENABLE_WEBRTC)
+  # 查找 srtp 是否安装
+  find_package(SRTP QUIET)
+  if(SRTP_FOUND AND ENABLE_OPENSSL)
+    message(STATUS "found library: ${SRTP_LIBRARIES}, ENABLE_WEBRTC defined")
+    update_cached_list(MK_COMPILE_DEFINITIONS ENABLE_WEBRTC)
+  else()
+    set(ENABLE_WEBRTC OFF)
+    message(WARNING "srtp 未找到, WebRTC 相关功能打开失败")
+  endif()
+endif()
 # ----------------------------------------------------------------------------
 # Solution folders:
 # ----------------------------------------------------------------------------
